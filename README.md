@@ -8,19 +8,23 @@
 
 ## 安装
 
+需要 Python 3.11 或更高版本。
+
 ```powershell
-python -m pip install -r requirements.txt
+python -m pip install -e .
 python -m playwright install chromium
 ```
 
 如果使用固定的虚拟环境或内置 Python，把命令中的 `python` 替换为对应解释器路径即可。
+
+安装后可使用 `xxt-jiaoan` 命令；也可以不安装，直接用 `python -m xxt_jiaoan` 运行。旧的 `xxt_jiaoan_automation.py` 仍保留为兼容入口。
 
 ## 配置
 
 第一次使用先复制配置：
 
 ```powershell
-Copy-Item config.example.json config.json
+xxt-jiaoan init-config
 ```
 
 重点确认：
@@ -33,13 +37,15 @@ Copy-Item config.example.json config.json
 - `schedule_file`：可选授课计划文件路径。不填时脚本会自动从课程目录下的 `1.授课计划` 查找。
 - `schedule_class_order`：可选。当一个授课计划里有多个班级表格且自动匹配不准时，可显式指定班级顺序。
 
+运行过程中产生的 payload、浏览器登录资料、调试文件、成功日志默认放在 `.xxt_jiaoan/` 目录中。
+
 ## 解析教案
 
 ```powershell
-python xxt_jiaoan_automation.py parse `
+xxt-jiaoan parse `
   --root "D:\Teaching\CourseName\3.教案" `
-  --config config.json `
-  --output payload_course.json
+  --config .xxt_jiaoan/config.json `
+  --output .xxt_jiaoan/payload_course.json
 ```
 
 解析时会自动：
@@ -54,8 +60,8 @@ python xxt_jiaoan_automation.py parse `
 ## 校验 Payload
 
 ```powershell
-python xxt_jiaoan_automation.py validate `
-  --payload payload_course.json
+xxt-jiaoan validate `
+  --payload .xxt_jiaoan/payload_course.json
 ```
 
 ## 查询提交状态
@@ -63,10 +69,10 @@ python xxt_jiaoan_automation.py validate `
 提交前建议先单独查询一次：
 
 ```powershell
-python xxt_jiaoan_automation.py status `
-  --config config.json `
-  --payload payload_course.json `
-  --debug-dir debug `
+xxt-jiaoan status `
+  --config .xxt_jiaoan/config.json `
+  --payload .xxt_jiaoan/payload_course.json `
+  --debug-dir .xxt_jiaoan/debug `
   --login-timeout 180
 ```
 
@@ -80,7 +86,7 @@ python xxt_jiaoan_automation.py status `
 完整报告保存到：
 
 ```text
-debug/submission_status_report.json
+.xxt_jiaoan/debug/submission_status_report.json
 ```
 
 ## 只填写并检查
@@ -88,9 +94,9 @@ debug/submission_status_report.json
 不点击提交，只验证填写流程：
 
 ```powershell
-python xxt_jiaoan_automation.py submit `
-  --config config.json `
-  --payload payload_course.json `
+xxt-jiaoan submit `
+  --config .xxt_jiaoan/config.json `
+  --payload .xxt_jiaoan/payload_course.json `
   --limit 1 `
   --slow-mo 100 `
   --check-only
@@ -99,35 +105,34 @@ python xxt_jiaoan_automation.py submit `
 检查通过会保存：
 
 ```text
-debug/precheck_passed.json
+.xxt_jiaoan/debug/precheck_passed.json
 ```
 
 检查失败会保存：
 
 ```text
-debug/precheck_failed.json
-debug/precheck_failed.png
-debug/precheck_failed.html
+.xxt_jiaoan/debug/precheck_failed.json
+.xxt_jiaoan/debug/precheck_failed.png
+.xxt_jiaoan/debug/precheck_failed.html
 ```
 
 ## 正式提交
 
 ```powershell
-python xxt_jiaoan_automation.py submit `
-  --config config.json `
-  --payload payload_course.json `
+xxt-jiaoan submit `
+  --config .xxt_jiaoan/config.json `
+  --payload .xxt_jiaoan/payload_course.json `
   --slow-mo 60 `
-  --login-timeout 180 `
-  --debug-dir debug
+  --login-timeout 180
 ```
 
 正式提交前，脚本会自动先执行提交状态检查，并只提交“未提交”清单中的教案。每条提交成功后会写入：
 
 ```text
-submit_success.jsonl
+.xxt_jiaoan/submit_success.jsonl
 ```
 
-重跑时默认会先按 `submit_success.jsonl` 跳过本地已成功记录，再进入网页提交记录做状态检查。
+重跑时默认会先按 `.xxt_jiaoan/submit_success.jsonl` 跳过本地已成功记录，再进入网页提交记录做状态检查。
 
 如需排错时不参考本地成功日志，可加：
 
@@ -154,7 +159,7 @@ submit_success.jsonl
 
 日期使用页面日期选择器真实点击选择，避免只写入隐藏值导致提交记录日期为空。
 
-教学反思默认允许为空。如果某门课程要求教学反思必填，可在 `config.json` 加入：
+教学反思默认允许为空。如果某门课程要求教学反思必填，可在 `.xxt_jiaoan/config.json` 加入：
 
 ```json
 {
@@ -170,13 +175,16 @@ submit_success.jsonl
 
 ## 代码结构
 
-- `xxt_jiaoan_automation.py`：命令行入口。
+- `pyproject.toml`：标准 Python 包配置，提供 `xxt-jiaoan` 命令。
+- `xxt_jiaoan_automation.py`：兼容旧用法的命令行入口。
+- `xxt_jiaoan/__main__.py`：支持 `python -m xxt_jiaoan`。
+- `xxt_jiaoan/cli.py`：命令行参数和流程编排。
+- `xxt_jiaoan/config.example.json`：安装后可用的配置模板。
 - `xxt_jiaoan/parser.py`：解析教案和授课计划，生成 payload。
 - `xxt_jiaoan/validation.py`：校验 payload 字段和附件路径。
 - `xxt_jiaoan/status.py`：进入提交记录页，统计已提交、疑似已提交、未提交。
 - `xxt_jiaoan/submitter.py`：Playwright 页面填写、课程库选择、附件上传、审批人选择、提交前检查。
 - `xxt_jiaoan/success_log.py`：本地成功提交日志。
-- `xxt_jiaoan/cli.py`：命令行参数和流程编排。
 
 ## 注意
 

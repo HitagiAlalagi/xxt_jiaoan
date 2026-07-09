@@ -7,7 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from .utils import clean_text
+from .utils import clean_text, comparable_text
 
 
 class XxtSubmitter:
@@ -17,7 +17,7 @@ class XxtSubmitter:
         *,
         headless: bool = False,
         slow_mo: int = 0,
-        user_data_dir: str = ".xxt_browser_profile",
+        user_data_dir: str = ".xxt_jiaoan/browser_profile",
         login_timeout: int = 300,
         debug_dir: str = "debug",
     ):
@@ -35,7 +35,7 @@ class XxtSubmitter:
         try:
             from playwright.async_api import async_playwright
         except ImportError as exc:
-            raise RuntimeError("Playwright 未安装。请先运行: python -m pip install -r requirements.txt && python -m playwright install chromium") from exc
+            raise RuntimeError("Playwright 未安装。请先运行: python -m pip install -e . && python -m playwright install chromium") from exc
         self.pw = await async_playwright().start()
         self.context = await self.pw.chromium.launch_persistent_context(
             self.user_data_dir,
@@ -570,7 +570,7 @@ class XxtSubmitter:
         for i, key in enumerate(["analysis", "objectives", "key_points", "references", "reflection"]):
             text = clean_text(await page.frame_locator(f"#ueditor_{i}").locator("body").inner_text())
             expected = clean_text(item[key])
-            report[key] = {"expected": expected, "actual": text, "ok": text == expected}
+            report[key] = {"expected": expected, "actual": text, "ok": comparable_text(text) == comparable_text(expected)}
             if key in required_editors:
                 report[f"{key}_nonempty"] = {"expected": "非空", "actual": "非空" if text else "空", "ok": bool(text)}
         failed = [k for k, row in report.items() if not row["ok"]]

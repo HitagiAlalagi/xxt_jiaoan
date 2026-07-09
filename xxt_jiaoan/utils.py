@@ -22,3 +22,8 @@ def write_json(path: Path, data: Any) -> None:
 
 def clean_text(value: str) -> str:
     return re.sub(r"\s+", " ", value or "").strip()
+
+
+def comparable_text(value: str) -> str:
+    text = clean_text(value)
+    return re.sub(r"(?<=[A-Za-z])\s+(?=[A-Za-z_$][A-Za-z0-9_$]*\()", "", text)

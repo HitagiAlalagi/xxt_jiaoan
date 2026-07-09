@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "xxt-jiaoan"
+version = "0.1.0"
+description = "Xuexitong lesson-plan parsing, status checking, and submission automation."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "python-docx>=1.1.2",
+  "playwright>=1.45.0",
+]
+
+[project.scripts]
+xxt-jiaoan = "xxt_jiaoan.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["xxt_jiaoan*"]
+
+[tool.setuptools.package-data]
+xxt_jiaoan = ["config.example.json"]

@@ -1,7 +1,9 @@
 .xxt_browser_profile/
+.xxt_jiaoan/
 debug*/
 __pycache__/
 *.py[cod]
+*.egg-info/
 
 config.json
 payload*.json

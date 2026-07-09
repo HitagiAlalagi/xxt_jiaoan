@@ -312,21 +312,78 @@ def align_items_with_schedule(items: list[LessonItem], root: Path, config: dict[
     if not schedule:
         return ["未找到授课计划，payload 未按授课计划校准。"]
     warnings: list[str] = []
+    rows_by_class: dict[str, list[dict[str, str]]] = {}
+    for row in schedule.values():
+        rows_by_class.setdefault(row["class_select"], []).append(row)
+    for class_select, class_items in group_items_by_class(items).items():
+        unused_rows = rows_by_class.get(class_select, []).copy()
+        for item in sorted(class_items, key=lambda x: (x.week, numeric_prefix(Path(x.file)), x.file)):
+            row = best_schedule_row(item, unused_rows)
+            if not row:
+                warnings.append(f"{item.class_select} 第{item.lesson_no}次课未在授课计划中找到: {item.file}")
+                continue
+            unused_rows.remove(row)
+            apply_schedule_row(item, row, warnings)
+    return warnings
+
+
+def group_items_by_class(items: list[LessonItem]) -> dict[str, list[LessonItem]]:
+    grouped: dict[str, list[LessonItem]] = {}
     for item in items:
-        row = schedule.get(schedule_key(item.class_select, item.lesson_no))
-        if not row:
-            warnings.append(f"{item.class_select} 第{item.lesson_no}次课未在授课计划中找到: {item.file}")
-            continue
+        grouped.setdefault(item.class_select, []).append(item)
+    return grouped
+
+
+def schedule_match_score(item: LessonItem, row: dict[str, str]) -> int:
+    score = 0
+    if clean_text(item.lesson_no) == clean_text(row["lesson_no"]):
+        score += 8
+    if item.date and clean_text(item.date) == clean_text(row["date"]):
+        score += 10
+    if item.start_period and clean_text(item.start_period) == clean_text(row["start_period"]):
+        score += 3
+    if item.end_period and clean_text(item.end_period) == clean_text(row["end_period"]):
+        score += 3
+    if item.week and str(item.week) == clean_text(row["week"]):
+        score += 5
+    item_topic = clean_text(item.topic)
+    row_topic = clean_text(row["topic"])
+    if item_topic and row_topic:
+        if item_topic == row_topic:
+            score += 10
+        elif item_topic in row_topic or row_topic in item_topic:
+            score += 4
+    prefix = numeric_prefix(Path(item.file))
+    if prefix and row["lesson_no"].isdigit():
+        week_lesson_index = ((int(row["lesson_no"]) - 1) % 2) + 1
+        if prefix == str(week_lesson_index):
+            score += 2
+    return score
+
+
+def best_schedule_row(item: LessonItem, rows: list[dict[str, str]]) -> dict[str, str] | None:
+    if not rows:
+        return None
+    scored = [(schedule_match_score(item, row), row) for row in rows]
+    scored.sort(key=lambda x: x[0], reverse=True)
+    if scored[0][0] <= 0:
+        return None
+    return scored[0][1]
+
+
+def apply_schedule_row(item: LessonItem, row: dict[str, str], warnings: list[str]) -> None:
         before = {
             "date": item.date,
             "start_period": item.start_period,
             "end_period": item.end_period,
+            "lesson_no": item.lesson_no,
             "topic": item.topic,
             "week": str(item.week),
         }
         item.date = row["date"] or item.date
         item.start_period = row["start_period"] or item.start_period
         item.end_period = row["end_period"] or item.end_period
+        item.lesson_no = row["lesson_no"] or item.lesson_no
         item.topic = row["topic"] or item.topic
         if row["week"].isdigit():
             item.week = int(row["week"])
@@ -336,7 +393,6 @@ def align_items_with_schedule(items: list[LessonItem], root: Path, config: dict[
                 warnings.append(
                     f"已按授课计划修正 {item.class_select} 第{item.lesson_no}次课 {key}: {old_value} -> {new_value}"
                 )
-    return warnings
 
 
 def parse_periods(value: str) -> tuple[str, str]:
@@ -358,18 +414,23 @@ def infer_week(path: Path, text: str) -> int:
 
 
 def infer_kind(path: Path, text: str) -> str:
+    parent_name = path.parent.name
     path_text = str(path)
+    for source in (parent_name, path.name):
+        m = re.search(r"((?:计算机应用技术|大数据技术|口腔修复工艺|医疗设备安装与维护)\d{4}班?)", source)
+        if m:
+            return m.group(1)
+    if parent_name and not re.match(r"第\d+周", parent_name):
+        return parent_name
     m = re.search(r"(计算机应用技术\d{4}班)", path_text)
     if m:
         return m.group(1)
-    if "医疗" in path_text:
+    if "医疗" in parent_name:
         return "医疗"
-    if "口腔" in path_text:
+    if "口腔" in parent_name:
         return "口腔"
     if "医疗" in text[:500]:
         return "医疗"
-    if "口腔" in text[:500]:
-        return "口腔"
     return ""
 
 

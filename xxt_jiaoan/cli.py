@@ -4,6 +4,7 @@ import argparse
 import asyncio
 import sys
 from dataclasses import asdict
+from importlib.resources import files
 from pathlib import Path
 
 from .models import LessonItem
@@ -13,6 +14,14 @@ from .submitter import XxtSubmitter
 from .success_log import append_success_log, read_success_keys, submission_key
 from .utils import read_json, write_json
 from .validation import validate_item
+
+
+APP_DIR = Path(".xxt_jiaoan")
+DEFAULT_CONFIG = APP_DIR / "config.json"
+DEFAULT_PAYLOAD = APP_DIR / "payload.json"
+DEFAULT_DEBUG_DIR = APP_DIR / "debug"
+DEFAULT_SUCCESS_LOG = APP_DIR / "submit_success.jsonl"
+DEFAULT_BROWSER_PROFILE = APP_DIR / "browser_profile"
 
 
 def print_remaining_summary(items: list[dict], title: str = "剩余未提交课次") -> None:
@@ -39,7 +48,9 @@ def command_parse(args: argparse.Namespace) -> int:
         items = [x for x in items if x.week <= args.max_week]
     schedule_warnings = align_items_with_schedule(items, root, config)
     errors = [err for item in items for err in validate_item(item)]
-    write_json(Path(args.output), [asdict(x) for x in items])
+    output = Path(args.output)
+    output.parent.mkdir(parents=True, exist_ok=True)
+    write_json(output, [asdict(x) for x in items])
     print(f"已生成 {args.output}: {len(items)} 条")
     for warning in schedule_warnings:
         print(f"- {warning}", file=sys.stderr)
@@ -61,6 +72,18 @@ def command_validate(args: argparse.Namespace) -> int:
             print(f"- {err}", file=sys.stderr)
         return 2
     print(f"校验通过: {len(items)} 条")
+    return 0
+
+
+def command_init_config(args: argparse.Namespace) -> int:
+    target = Path(args.output)
+    if target.exists() and not args.force:
+        print(f"配置文件已存在: {target}。如需覆盖请加 --force。", file=sys.stderr)
+        return 2
+    target.parent.mkdir(parents=True, exist_ok=True)
+    source = files("xxt_jiaoan").joinpath("config.example.json")
+    target.write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    print(f"已生成配置模板: {target}")
     return 0
 
 
@@ -139,38 +162,42 @@ def build_parser() -> argparse.ArgumentParser:
 
     p = sub.add_parser("parse", help="从教案目录解析生成 payload JSON")
     p.add_argument("--root", required=True, help="教案根目录")
-    p.add_argument("--config", default="config.json")
-    p.add_argument("--output", default="payload.json")
+    p.add_argument("--config", default=str(DEFAULT_CONFIG))
+    p.add_argument("--output", default=str(DEFAULT_PAYLOAD))
     p.add_argument("--min-week", type=int, default=0)
     p.add_argument("--max-week", type=int, default=0)
 
     p = sub.add_parser("validate", help="校验 payload JSON 字段和附件路径")
-    p.add_argument("--payload", default="payload.json")
+    p.add_argument("--payload", default=str(DEFAULT_PAYLOAD))
+
+    p = sub.add_parser("init-config", help="生成本地配置模板")
+    p.add_argument("--output", default=str(DEFAULT_CONFIG), help="配置文件输出路径")
+    p.add_argument("--force", action="store_true", help="覆盖已存在的配置文件")
 
     p = sub.add_parser("submit", help="打开浏览器并按 payload 提交")
-    p.add_argument("--payload", default="payload.json")
-    p.add_argument("--config", default="config.json")
+    p.add_argument("--payload", default=str(DEFAULT_PAYLOAD))
+    p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--limit", type=int, default=0, help="只提交前 N 条，适合测试")
     p.add_argument("--headless", action="store_true")
     p.add_argument("--slow-mo", type=int, default=50)
-    p.add_argument("--user-data-dir", default=".xxt_browser_profile", help="Playwright 持久化浏览器资料夹，用于保存登录态")
+    p.add_argument("--user-data-dir", default=str(DEFAULT_BROWSER_PROFILE), help="Playwright 持久化浏览器资料夹，用于保存登录态")
     p.add_argument("--login-timeout", type=int, default=300, help="等待登录和填写页加载的秒数")
-    p.add_argument("--debug-dir", default="debug", help="失败时保存截图和 HTML 的目录")
-    p.add_argument("--success-log", default="submit_success.jsonl", help="成功提交后的本地 JSONL 日志")
+    p.add_argument("--debug-dir", default=str(DEFAULT_DEBUG_DIR), help="失败时保存截图和 HTML 的目录")
+    p.add_argument("--success-log", default=str(DEFAULT_SUCCESS_LOG), help="成功提交后的本地 JSONL 日志")
     p.add_argument("--ignore-success-log", action="store_true", help="不按本地成功日志跳过，通常只在人工排错时使用")
     p.add_argument("--skip-success-log", dest="ignore_success_log", action="store_false", help=argparse.SUPPRESS)
     p.add_argument("--check-only", action="store_true", help="只填写并检查内容，不点击提交")
     p.add_argument("--no-web-record-check", action="store_true", help="不进入提交记录页检查是否已提交")
 
     p = sub.add_parser("status", help="进入提交记录页，统计哪些教案已提交/未提交")
-    p.add_argument("--payload", default="payload.json")
-    p.add_argument("--config", default="config.json")
+    p.add_argument("--payload", default=str(DEFAULT_PAYLOAD))
+    p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--headless", action="store_true")
     p.add_argument("--slow-mo", type=int, default=50)
-    p.add_argument("--user-data-dir", default=".xxt_browser_profile", help="Playwright 持久化浏览器资料夹，用于保存登录态")
+    p.add_argument("--user-data-dir", default=str(DEFAULT_BROWSER_PROFILE), help="Playwright 持久化浏览器资料夹，用于保存登录态")
     p.add_argument("--login-timeout", type=int, default=300, help="等待登录和记录页加载的秒数")
-    p.add_argument("--debug-dir", default="debug", help="保存状态报告的目录")
-    p.add_argument("--success-log", default="submit_success.jsonl", help="本地成功 JSONL 日志")
+    p.add_argument("--debug-dir", default=str(DEFAULT_DEBUG_DIR), help="保存状态报告的目录")
+    p.add_argument("--success-log", default=str(DEFAULT_SUCCESS_LOG), help="本地成功 JSONL 日志")
     p.add_argument("--ignore-success-log", action="store_true", help="状态统计不参考本地成功日志")
     return parser
 
@@ -181,6 +208,8 @@ def main() -> int:
         return command_parse(args)
     if args.command == "validate":
         return command_validate(args)
+    if args.command == "init-config":
+        return command_init_config(args)
     if args.command == "submit":
         return asyncio.run(command_submit_async(args))
     if args.command == "status":
