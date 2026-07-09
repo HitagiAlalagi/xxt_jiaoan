@@ -1,0 +1,15 @@
+.xxt_browser_profile/
+debug*/
+__pycache__/
+*.py[cod]
+
+config.json
+payload*.json
+manifest*.json
+submit_payload*.json
+submit_success.jsonl
+
+.env
+.venv/
+venv/
+node_modules/
