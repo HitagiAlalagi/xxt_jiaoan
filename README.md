@@ -33,23 +33,44 @@ xxt-jiaoan init-config
 - `record_url`：可选。提交记录页地址；不填时脚本会从 `apply_url` 推导。
 - `course_query`：兜底课程库查询关键词。payload 中每条教案有 `course_name` 时优先使用教案里的课程名。
 - `approver`：审批人姓名。
+- `lesson_root`：可选教案目录。不填时脚本会从 `--root` 自动搜索名称包含“教案/备课”的目录。
 - `class_map`：可选班级名称修正表。
 - `schedule_file`：可选授课计划文件路径。不填时脚本会自动从课程目录下的 `1.授课计划` 查找。
+- `standard_file`：可选授课标准/课程标准文件路径。当前提交流程只发现并报告它，不强制使用。
 - `schedule_class_order`：可选。当一个授课计划里有多个班级表格且自动匹配不准时，可显式指定班级顺序。
 
 运行过程中产生的 payload、浏览器登录资料、调试文件、成功日志默认放在 `.xxt_jiaoan/` 目录中。
+
+## 搜索课程文件
+
+可以先让脚本从课程目录或任意子目录搜索教案、授课计划、授课标准：
+
+```powershell
+xxt-jiaoan discover `
+  --root "D:\Teaching\CourseName" `
+  --config .xxt_jiaoan/config.json
+```
+
+输出字段：
+
+- `course_root`：推断出的课程根目录。
+- `lesson_root`：教案目录。
+- `schedule_file`：授课计划文件。
+- `standard_file`：授课标准/课程标准文件。
+- `warnings`：未找到某类文件时的提示。
 
 ## 解析教案
 
 ```powershell
 xxt-jiaoan parse `
-  --root "D:\Teaching\CourseName\3.教案" `
+  --root "D:\Teaching\CourseName" `
   --config .xxt_jiaoan/config.json `
   --output .xxt_jiaoan/payload_course.json
 ```
 
 解析时会自动：
 
+- 从课程目录搜索教案目录、授课计划、授课标准。
 - 读取教案正文、教材、教具、教学目标、重点难点、参考资料、教学反思等字段。
 - 匹配同目录下的续页文件，例如 `1_...docx` 对应 `续页-1.docx`。
 - 查找课程目录下的授课计划，对照并校准日期、开始节次、结束节次、课次、授课题目。
@@ -180,6 +201,7 @@ xxt-jiaoan submit `
 - `xxt_jiaoan/__main__.py`：支持 `python -m xxt_jiaoan`。
 - `xxt_jiaoan/cli.py`：命令行参数和流程编排。
 - `xxt_jiaoan/config.example.json`：安装后可用的配置模板。
+- `xxt_jiaoan/discovery.py`：搜索课程目录中的教案、授课计划、授课标准。
 - `xxt_jiaoan/parser.py`：解析教案和授课计划，生成 payload。
 - `xxt_jiaoan/validation.py`：校验 payload 字段和附件路径。
 - `xxt_jiaoan/status.py`：进入提交记录页，统计已提交、疑似已提交、未提交。

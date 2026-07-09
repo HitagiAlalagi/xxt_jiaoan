@@ -7,6 +7,7 @@ from dataclasses import asdict
 from importlib.resources import files
 from pathlib import Path
 
+from .discovery import discover_course_paths
 from .models import LessonItem
 from .parser import align_items_with_schedule, discover_docx, parse_docx
 from .status import build_status_report, pending_items_from_report, print_status_summary
@@ -39,9 +40,22 @@ def print_remaining_summary(items: list[dict], title: str = "剩余未提交课�
 
 
 def command_parse(args: argparse.Namespace) -> int:
-    config = read_json(Path(args.config))
-    root = Path(args.root)
-    items = [parse_docx(path, config) for path in discover_docx(root)]
+    config_path = Path(args.config)
+    if not config_path.exists():
+        print(f"配置文件不存在: {config_path}。请先运行 xxt-jiaoan init-config。", file=sys.stderr)
+        return 2
+    config = read_json(config_path)
+    discovered = discover_course_paths(Path(args.root), config)
+    root = Path(discovered.lesson_root or args.root)
+    if discovered.schedule_file and not config.get("schedule_file"):
+        config = {**config, "schedule_file": discovered.schedule_file}
+    docs = discover_docx(root)
+    if not docs:
+        print(f"未找到教案 docx: {root}", file=sys.stderr)
+        for warning in discovered.warnings:
+            print(f"- {warning}", file=sys.stderr)
+        return 2
+    items = [parse_docx(path, config) for path in docs]
     if args.min_week:
         items = [x for x in items if x.week >= args.min_week]
     if args.max_week:
@@ -60,6 +74,13 @@ def command_parse(args: argparse.Namespace) -> int:
             print(f"- {err}", file=sys.stderr)
         return 2
     return 0
+
+
+def command_discover(args: argparse.Namespace) -> int:
+    config = read_json(Path(args.config)) if Path(args.config).exists() else {}
+    discovered = discover_course_paths(Path(args.root), config)
+    print(discovered.to_json())
+    return 2 if args.strict and discovered.warnings else 0
 
 
 def command_validate(args: argparse.Namespace) -> int:
@@ -88,7 +109,11 @@ def command_init_config(args: argparse.Namespace) -> int:
 
 
 async def command_submit_async(args: argparse.Namespace) -> int:
-    config = read_json(Path(args.config))
+    config_path = Path(args.config)
+    if not config_path.exists():
+        print(f"配置文件不存在: {config_path}。请先运行 xxt-jiaoan init-config。", file=sys.stderr)
+        return 2
+    config = read_json(config_path)
     items = read_json(Path(args.payload))
     if args.limit:
         items = items[: args.limit]
@@ -136,7 +161,11 @@ async def command_submit_async(args: argparse.Namespace) -> int:
 
 
 async def command_status_async(args: argparse.Namespace) -> int:
-    config = read_json(Path(args.config))
+    config_path = Path(args.config)
+    if not config_path.exists():
+        print(f"配置文件不存在: {config_path}。请先运行 xxt-jiaoan init-config。", file=sys.stderr)
+        return 2
+    config = read_json(config_path)
     items = read_json(Path(args.payload))
     async with XxtSubmitter(
         config,
@@ -161,11 +190,16 @@ def build_parser() -> argparse.ArgumentParser:
     sub = parser.add_subparsers(dest="command", required=True)
 
     p = sub.add_parser("parse", help="从教案目录解析生成 payload JSON")
-    p.add_argument("--root", required=True, help="教案根目录")
+    p.add_argument("--root", required=True, help="课程目录或教案目录")
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--output", default=str(DEFAULT_PAYLOAD))
     p.add_argument("--min-week", type=int, default=0)
     p.add_argument("--max-week", type=int, default=0)
+
+    p = sub.add_parser("discover", help="搜索课程目录中的教案、授课计划、授课标准")
+    p.add_argument("--root", required=True, help="课程目录或任意子目录")
+    p.add_argument("--config", default=str(DEFAULT_CONFIG))
+    p.add_argument("--strict", action="store_true", help="发现结果有警告时返回非零状态码")
 
     p = sub.add_parser("validate", help="校验 payload JSON 字段和附件路径")
     p.add_argument("--payload", default=str(DEFAULT_PAYLOAD))
@@ -206,6 +240,8 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.command == "parse":
         return command_parse(args)
+    if args.command == "discover":
+        return command_discover(args)
     if args.command == "validate":
         return command_validate(args)
     if args.command == "init-config":

@@ -4,6 +4,9 @@
   "course_query": "",
   "approver": "",
   "default_course_type": "",
+  "lesson_root": "",
+  "schedule_file": "",
+  "standard_file": "",
   "class_map": {
     "教案文件夹中的班级名": "学习通课程库中的班级名"
   },

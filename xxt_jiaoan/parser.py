@@ -6,6 +6,8 @@ from typing import Any
 
 from docx import Document
 
+from .discovery import find_schedule_file as discover_schedule_file
+from .discovery import is_lesson_docx
 from .models import LessonItem
 from .utils import clean_text
 
@@ -177,19 +179,7 @@ def schedule_key(class_select: str, lesson_no: str) -> tuple[str, str]:
 
 
 def find_schedule_file(root: Path) -> Path | None:
-    root = root.resolve()
-    for parent in [root, *root.parents]:
-        if parent.name.startswith("3."):
-            course_root = parent.parent
-            break
-    else:
-        course_root = root.parent
-    for child in course_root.iterdir() if course_root.exists() else []:
-        if child.is_dir() and child.name.startswith("1."):
-            docs = [p for p in child.iterdir() if p.suffix.lower() == ".docx" and not p.name.startswith("~$")]
-            if docs:
-                return docs[0]
-    return None
+    return discover_schedule_file(root)
 
 
 def class_names_from_items(items: list[LessonItem]) -> list[str]:
@@ -523,10 +513,4 @@ def parse_docx(path: Path, config: dict[str, Any]) -> LessonItem:
 
 
 def discover_docx(root: Path) -> list[Path]:
-    return sorted(
-        p for p in root.rglob("*.docx")
-        if not p.name.startswith("~$")
-        and "续页" not in p.name
-        and "模版" not in p.name
-        and "模板" not in p.name
-    )
+    return sorted(p for p in root.rglob("*.docx") if is_lesson_docx(p))
